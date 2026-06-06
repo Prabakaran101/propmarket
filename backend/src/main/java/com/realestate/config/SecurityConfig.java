@@ -52,14 +52,14 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
 
                 // ACTUATOR
                 .requestMatchers(EndpointRequest.toAnyEndpoint()).permitAll()
 
-                // AUTH APIs
+                // AUTH
                 .requestMatchers("/api/auth/**").permitAll()
 
                 // PUBLIC APIs
@@ -69,10 +69,13 @@ public class SecurityConfig {
                 // UPLOADS
                 .requestMatchers("/uploads/**").permitAll()
 
-                // EVERYTHING ELSE UNDER /api IS PROTECTED
+                // HEALTH CHECK ROOT API (IMPORTANT FOR /api 403 ISSUE)
+                .requestMatchers("/api").permitAll()
+
+                // EVERYTHING ELSE UNDER API IS PROTECTED
                 .requestMatchers("/api/**").authenticated()
 
-                // ROOT
+                // FRONTEND ROOT
                 .requestMatchers("/").permitAll()
 
                 .anyRequest().authenticated()
