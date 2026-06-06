@@ -77,27 +77,24 @@ public class SecurityConfig {
 
             .authorizeHttpRequests(auth -> auth
                 // ===== ACTUATOR =====
-                .requestMatchers(
-                    EndpointRequest.toAnyEndpoint()
-                ).permitAll()
-
+                EndpointRequest.toAnyEndpoint().permitAll()
+            
                 // ===== AUTH =====
-                .requestMatchers("/api/auth/**")
-                .permitAll()
-
-                // ===== PUBLIC GET APIs =====
-                .requestMatchers(
-                    HttpMethod.GET,
-                    "/api/listings/**"
-                ).permitAll()
-
+                .requestMatchers("/api/auth/**").permitAll()
+            
+                // ===== PUBLIC API (IMPORTANT FIX) =====
+                .requestMatchers("/api/public/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
+            
+                // ADD THIS (THIS FIXES YOUR 403 ON /api)
+                .requestMatchers("/api").permitAll()
+                .requestMatchers("/api/**").authenticated()
+            
                 // ===== UPLOADS =====
-                .requestMatchers("/uploads/**")
-                .permitAll()
-
+                .requestMatchers("/uploads/**").permitAll()
+            
                 // ===== EVERYTHING ELSE =====
-                .anyRequest()
-                .authenticated()
+                .anyRequest().authenticated()
             )
 
             .addFilterBefore(
