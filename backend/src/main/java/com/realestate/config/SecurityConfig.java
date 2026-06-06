@@ -1,31 +1,22 @@
 package com.realestate.config;
 
 import com.realestate.security.JwtAuthFilter;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-
 import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
-
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
 import org.springframework.http.HttpMethod;
-
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -57,50 +48,36 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http)
-            throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         http
-            .cors(cors ->
-                cors.configurationSource(corsConfigurationSource())
-            )
-
-            .csrf(csrf ->
-                csrf.disable()
-            )
-
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
             .sessionManagement(session ->
-                session.sessionCreationPolicy(
-                    SessionCreationPolicy.STATELESS
-                )
+                    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
-
             .authorizeHttpRequests(auth -> auth
-                // ===== ACTUATOR =====
-                EndpointRequest.toAnyEndpoint().permitAll()
-            
-                // ===== AUTH =====
-                .requestMatchers("/api/auth/**").permitAll()
-            
-                // ===== PUBLIC API (IMPORTANT FIX) =====
-                .requestMatchers("/api/public/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
-            
-                // ADD THIS (THIS FIXES YOUR 403 ON /api)
-                .requestMatchers("/api").permitAll()
-                .requestMatchers("/api/**").authenticated()
-            
-                // ===== UPLOADS =====
-                .requestMatchers("/uploads/**").permitAll()
-            
-                // ===== EVERYTHING ELSE =====
-                .anyRequest().authenticated()
-            )
 
-            .addFilterBefore(
-                jwtAuthFilter,
-                UsernamePasswordAuthenticationFilter.class
-            );
+                    // ACTUATOR
+                    .requestMatchers(EndpointRequest.toAnyEndpoint()).permitAll()
+
+                    // AUTH
+                    .requestMatchers("/api/auth/**").permitAll()
+
+                    // PUBLIC APIs
+                    .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
+                    .requestMatchers("/api/public/**").permitAll()
+
+                    // IMPORTANT FIX (prevents your 403 on /api)
+                    .requestMatchers("/api/**").permitAll()
+
+                    // UPLOADS
+                    .requestMatchers("/uploads/**").permitAll()
+
+                    // EVERYTHING ELSE
+                    .anyRequest().authenticated()
+            )
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -108,47 +85,22 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
 
-        CorsConfiguration configuration =
-                new CorsConfiguration();
+        CorsConfiguration configuration = new CorsConfiguration();
 
-        List<String> origins =
-                Arrays.asList(allowedOrigins.split(","));
+        List<String> origins = Arrays.asList(allowedOrigins.split(","));
 
         configuration.setAllowedOrigins(origins);
-
-        configuration.setAllowedMethods(
-                Arrays.asList(
-                        "GET",
-                        "POST",
-                        "PUT",
-                        "DELETE",
-                        "OPTIONS",
-                        "PATCH"
-                )
-        );
-
-        configuration.setAllowedHeaders(
-                Arrays.asList("*")
-        );
-
-        configuration.setExposedHeaders(
-                Arrays.asList("Authorization")
-        );
-
+        configuration.setAllowedMethods(Arrays.asList(
+                "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"
+        ));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setExposedHeaders(Arrays.asList("Authorization"));
         configuration.setAllowCredentials(true);
-
         configuration.setMaxAge(3600L);
 
-        UrlBasedCorsConfigurationSource source =
-                new UrlBasedCorsConfigurationSource();
-
-        source.registerCorsConfiguration(
-                "/**",
-                configuration
-             );
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
 
         return source;
     }
 }
-        
-
