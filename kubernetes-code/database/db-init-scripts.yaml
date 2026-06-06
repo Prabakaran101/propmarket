@@ -1,0 +1,247 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scripts
+  namespace: propmarket
+
+data:
+
+  00-schema.sql: |
+    -- =========================
+    -- TABLES
+    -- =========================
+    
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT UNIQUE,
+      phone TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS listings (
+      id BIGSERIAL PRIMARY KEY,
+      status TEXT,
+      listing_type TEXT,
+      property_type TEXT,
+      city TEXT,
+      owner_id BIGINT,
+      price NUMERIC,
+      view_count INT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS listing_images (
+      id BIGSERIAL PRIMARY KEY,
+      listing_id BIGINT REFERENCES listings(id) ON DELETE CASCADE,
+      image_url TEXT,
+      display_order INT
+    );
+
+  01-init.sql: |
+    -- Extensions and grants
+    
+    CREATE EXTENSION IF NOT EXISTS "citext";
+    
+    GRANT ALL PRIVILEGES ON DATABASE realestate TO propadmin;
+    GRANT ALL ON SCHEMA public TO propadmin;
+    
+    ALTER USER propadmin SET search_path TO public;
+    
+    DO $$
+    BEGIN
+      RAISE NOTICE 'DB init complete at %', NOW();
+    END $$;
+
+  02-indexes.sql: |
+    DO $$
+    BEGIN
+    
+      IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'users'
+      ) THEN
+    
+        CREATE INDEX IF NOT EXISTS idx_users_email
+        ON users(email);
+    
+        CREATE INDEX IF NOT EXISTS idx_users_phone
+        ON users(phone);
+    
+      END IF;
+    
+      IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'listings'
+      ) THEN
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_status
+        ON listings(status);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_listing_type
+        ON listings(listing_type);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_property_type
+        ON listings(property_type);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_city
+        ON listings(LOWER(city));
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_owner_id
+        ON listings(owner_id);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_price
+        ON listings(price);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_created_at
+        ON listings(created_at DESC);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_view_count
+        ON listings(view_count DESC);
+    
+        CREATE INDEX IF NOT EXISTS idx_listings_status_type_city
+        ON listings(status, listing_type, LOWER(city));
+    
+      END IF;
+    
+      IF EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'listing_images'
+      ) THEN
+    
+        CREATE INDEX IF NOT EXISTS idx_listing_images_listing_id
+        ON listing_images(listing_id);
+    
+        CREATE INDEX IF NOT EXISTS idx_listing_images_order
+        ON listing_images(listing_id, display_order);
+    
+      END IF;
+    
+    END $$;
+
+---
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: db-sql
+  namespace: propmarket
+
+spec:
+  backoffLimit: 5
+
+  template:
+    spec:
+      restartPolicy: OnFailure
+
+      volumes:
+        - name: sql-scripts
+          configMap:
+            name: scripts
+
+        - name: cert-volume
+          emptyDir: {}
+
+      initContainers:
+        - name: download-cert
+          image: curlimages/curl:8.8.0
+
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              
+              echo "Downloading RDS SSL certificate..."
+              
+              curl -sSf \
+              https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+              -o /cert/global-bundle.pem
+              
+              echo "Certificate downloaded successfully"
+
+          volumeMounts:
+            - name: cert-volume
+              mountPath: /cert
+
+      containers:
+        - name: run-sql
+          image: postgres:15-alpine
+
+          volumeMounts:
+            - name: sql-scripts
+              mountPath: /sql
+
+            - name: cert-volume
+              mountPath: /cert
+
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_HOST
+
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_PORT
+
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_NAME
+
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rds-secret
+                  key: DB_USERNAME
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rds-secret
+                  key: DB_PASSWORD
+
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              
+              export PGPASSWORD=$DB_PASSWORD
+              
+              echo "Connecting to DB: $DB_HOST:$DB_PORT/$DB_NAME"
+              
+              psql "host=$DB_HOST \
+              port=$DB_PORT \
+              dbname=$DB_NAME \
+              user=$DB_USERNAME \
+              sslmode=verify-full \
+              sslrootcert=/cert/global-bundle.pem" \
+              -f /sql/00-schema.sql
+              
+              psql "host=$DB_HOST \
+              port=$DB_PORT \
+              dbname=$DB_NAME \
+              user=$DB_USERNAME \
+              sslmode=verify-full \
+              sslrootcert=/cert/global-bundle.pem" \
+              -f /sql/01-init.sql
+              
+              psql "host=$DB_HOST \
+              port=$DB_PORT \
+              dbname=$DB_NAME \
+              user=$DB_USERNAME \
+              sslmode=verify-full \
+              sslrootcert=/cert/global-bundle.pem" \
+              -f /sql/02-indexes.sql
+              
+              echo "DB initialization completed successfully"
+

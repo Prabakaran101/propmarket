@@ -1,0 +1,140 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: backend-rollout
+  namespace: propmarket
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: propmarket-sa
+      volumes:
+        - name: ssl-cert
+          secret:
+            secretName: rds-ssl-cert
+        - name: uploads
+          emptyDir: {}
+      initContainers:
+        - name: wait-for-rds
+          image: postgres:15-alpine
+          volumeMounts:
+            - name: ssl-cert
+              mountPath: /app/certs
+          env:
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: DB_USERNAME
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: DB_PASSWORD
+            - name: PGSSLMODE
+              value: "verify-full"
+            - name: PGSSLROOTCERT
+              value: "/app/certs/global-bundle.pem"
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h propmarket-db.ch8ck0kssfib.us-west-2.rds.amazonaws.com -p 5432 -U $PGUSER; do
+                echo "waiting..."; sleep 5
+              done
+      containers:
+        - name: backend
+          image: YOUR_DOCKERHUB/realestate-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: ssl-cert
+              mountPath: /app/certs
+              readOnly: true
+            - name: uploads
+              mountPath: /app/uploads
+          env:
+            - name: DB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_URL
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secret
+                  key: JWT_SECRET
+            - name: UPLOAD_DIR
+              value: "/app/uploads"
+            - name: CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: CORS_ORIGINS
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+            - name: MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED
+              value: "true"
+            - name: MANAGEMENT_HEALTH_READINESSSTATE_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "250m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 30
+            failureThreshold: 3
+  strategy:
+    blueGreen:
+      activeService: backend-service
+      previewService: backend-preview-service
+      autoPromotionEnabled: false
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-preview-service
+  namespace: propmarket
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP

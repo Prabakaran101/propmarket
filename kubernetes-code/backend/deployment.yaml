@@ -1,0 +1,180 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: propmarket
+  labels:
+    app: backend
+
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: backend
+
+  template:
+    metadata:
+      labels:
+        app: backend
+
+    spec:
+      serviceAccountName: propmarket-sa
+
+      volumes:
+        - name: cert-volume
+          emptyDir: {}
+      initContainers:
+        - name: wait-for-db
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL DB..."
+              until nc -z $DB_HOST $DB_PORT; do
+                echo "DB not ready yet, retrying in 5s..."
+                sleep 5
+              done
+              echo "DB is reachable. Proceeding..."
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_PORT
+
+        - name: download-cert
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              echo "Downloading SSL certificate..."
+              curl -sSf https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+              -o /cert/global-bundle.pem
+              echo "Done"
+          volumeMounts:
+            - name: cert-volume
+              mountPath: /cert
+
+      containers:
+        - name: backend
+          image: prabakaran101/realestate-backend:v3
+#          image: prabakaran101/realestate-backend:latest
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8080
+
+          volumeMounts:
+            - name: cert-volume
+              mountPath: /app/certs
+
+          env:
+
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_HOST
+
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_PORT
+
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_NAME
+
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rds-secret
+                  key: DB_USERNAME
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rds-secret
+                  key: DB_PASSWORD
+
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rds-secret
+                  key: JWT_SECRET
+            - name: DB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rds-config
+                  key: DB_URL
+            # Spring Boot actuator probes
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+            - name: MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED
+              value: "true"
+            - name: MANAGEMENT_HEALTH_READINESSSTATE_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "health,info"
+            - name: SPRING_PROFILES_ACTIVE
+              value: dev
+            # App config from configmap
+            - name: UPLOAD_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: UPLOAD_DIR
+            - name: CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: CORS_ORIGINS
+
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "250m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+
+          startupProbe:
+#            tcpSocket:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+
+          readinessProbe:
+#            tcpSocket:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+#            tcpSocket:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 30
+            failureThreshold: 3

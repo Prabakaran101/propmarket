@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-healthcheck
+  namespace: propmarket
+spec:
+  schedule: "*/10 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          volumes:
+            - name: ssl-cert
+              secret:
+                secretName: rds-ssl-cert
+          containers:
+            - name: db-check
+              image: postgres:15-alpine
+              volumeMounts:
+                - name: ssl-cert
+                  mountPath: /app/certs
+              env:
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: rds-secret
+                      key: DB_USERNAME
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: rds-secret
+                      key: DB_PASSWORD
+                - name: PGSSLMODE
+                  value: "verify-full"
+                - name: PGSSLROOTCERT
+                  value: "/app/certs/global-bundle.pem"
+              command:
+                - sh
+                - -c
+                - |
+                  pg_isready -h propmarket-db.ch8ck0kssfib.us-west-2.rds.amazonaws.com -p 5432 -U $PGUSER \
+                    && echo "DB OK" || echo "DB NOT REACHABLE"
