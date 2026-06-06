@@ -1,0 +1,78 @@
+# ──────────────────────────────────────────────────────────────────
+#  PostgreSQL Dockerfile — PropMarket Database
+#  Version: PostgreSQL 15 (Alpine)
+#
+#  Matches:
+#    - Spring Boot Hibernate dialect: PostgreSQLDialect
+#    - JDBC driver:  org.postgresql (PostgreSQL 15 compatible)
+#    - docker-compose.yml image:  postgres:15-alpine
+#
+#  USAGE:
+#    Build image:
+#      docker build -t realestate-db:1.0 .
+#
+#    Run container manually:
+#      docker run -d \
+#        --name realestate-db \
+#        --network realestate-network \
+#        --restart unless-stopped \
+#        -e POSTGRES_DB=realestatedb \
+#        -e POSTGRES_USER=realestate \
+#        -e POSTGRES_PASSWORD=realestate123 \
+#        -v realestate-pgdata:/var/lib/postgresql/data \
+#        -p 5432:5432 \
+#        realestate-db:1.0
+#
+#  NOTE:
+#    - init.sql runs automatically on FIRST container startup only.
+#    - Data is persisted in Docker volume "realestate-pgdata".
+#    - If you delete the volume, all data is lost.
+#    - On EC2, if PostgreSQL is installed directly on the host
+#      (not in a container), you do NOT need this Dockerfile.
+#      Use this only when you want a fully containerised DB.
+# ──────────────────────────────────────────────────────────────────
+
+FROM postgres:15-alpine
+
+# ── Labels ─────────────────────────────────────────────────────────
+LABEL maintainer="PropMarket"
+LABEL description="PostgreSQL 15 database for PropMarket Real Estate App"
+LABEL version="1.0"
+
+# ── Default environment variables ──────────────────────────────────
+# These can all be overridden by -e flags in docker run
+ENV POSTGRES_DB=realestatedb
+ENV POSTGRES_USER=realestate
+ENV POSTGRES_PASSWORD=realestate123
+ENV PGDATA=/var/lib/postgresql/data/pgdata
+
+# ── PostgreSQL tuning for a small EC2 instance (t2.micro / t2.small)
+# Written to a config file that gets included by postgresql.conf
+RUN echo "# PropMarket PostgreSQL tuning" > /etc/postgresql-tuning.conf && \
+    echo "max_connections = 100"            >> /etc/postgresql-tuning.conf && \
+    echo "shared_buffers = 128MB"           >> /etc/postgresql-tuning.conf && \
+    echo "effective_cache_size = 256MB"     >> /etc/postgresql-tuning.conf && \
+    echo "work_mem = 4MB"                   >> /etc/postgresql-tuning.conf && \
+    echo "maintenance_work_mem = 32MB"      >> /etc/postgresql-tuning.conf && \
+    echo "wal_buffers = 4MB"                >> /etc/postgresql-tuning.conf && \
+    echo "checkpoint_completion_target = 0.9" >> /etc/postgresql-tuning.conf && \
+    echo "log_timezone = 'UTC'"             >> /etc/postgresql-tuning.conf && \
+    echo "timezone = 'UTC'"                 >> /etc/postgresql-tuning.conf && \
+    echo "log_min_duration_statement = 1000" >> /etc/postgresql-tuning.conf && \
+    echo "log_statement = 'ddl'"            >> /etc/postgresql-tuning.conf
+
+# ── Copy SQL init scripts ───────────────────────────────────────────
+# Any .sql or .sh file placed in /docker-entrypoint-initdb.d/
+# is executed automatically on first startup (alphabetical order).
+COPY init/01-init.sql      /docker-entrypoint-initdb.d/01-init.sql
+COPY init/02-indexes.sql   /docker-entrypoint-initdb.d/02-indexes.sql
+
+# ── Expose PostgreSQL port ──────────────────────────────────────────
+EXPOSE 5432
+
+# ── Health check ───────────────────────────────────────────────────
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+  CMD pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} || exit 1
+
+# Entrypoint is inherited from the official postgres:15-alpine image
+# CMD ["postgres"] is also inherited — no need to override

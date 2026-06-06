@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # ============================================================
+  # TIER 1: PostgreSQL Database
+  # ============================================================
+  db:
+    image: postgres:15-alpine
+    container_name: realestate-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: realestatedb
+      POSTGRES_USER: realestate
+      POSTGRES_PASSWORD: realestate123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - realestate-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U realestate -d realestatedb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================================
+  # TIER 2: Spring Boot Backend API
+  # ============================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: realestate-backend
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/realestatedb
+      DB_USERNAME: realestate
+      DB_PASSWORD: realestate123
+      JWT_SECRET: PropMarketJWTSecretKey2024VeryLongAndSecureKeyForProduction
+      UPLOAD_DIR: /app/uploads
+      CORS_ORIGINS: http://localhost,http://localhost:80,http://frontend:80
+      SPRING_PROFILES_ACTIVE: docker
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8080:8080"
+    networks:
+      - realestate-network
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ============================================================
+  # TIER 3: React Frontend (Nginx)
+  # ============================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: realestate-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - realestate-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+# ============================================================
+# Volumes
+# ============================================================
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+# ============================================================
+# Network
+# ============================================================
+networks:
+  realestate-network:
+    driver: bridge
+    name: realestate-network
