@@ -1,11 +1,14 @@
 package com.realestate.security;
 
-import jakarta.servlet.*;
-import jakarta.servlet.http.*;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.*;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -14,7 +17,6 @@ import java.io.IOException;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
-    
 
     @Autowired
     private JwtUtils jwtUtils;
@@ -30,8 +32,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // ✅ CRITICAL FIX: bypass actuator completely
-        if (path.startsWith("/actuator")) {
+        // allow actuator + preflight
+        if (path.startsWith("/actuator") || "OPTIONS".equalsIgnoreCase(request.getMethod())) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -43,7 +45,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String username = jwtUtils.extractUsername(jwt);
 
                 if (username != null &&
-                    SecurityContextHolder.getContext().getAuthentication() == null) {
+                        SecurityContextHolder.getContext().getAuthentication() == null) {
 
                     UserDetails userDetails =
                             userDetailsService.loadUserByUsername(username);
@@ -67,13 +69,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
 
         } catch (Exception e) {
-            // don't block actuator or requests due to JWT errors
             logger.error("JWT processing failed", e);
         }
 
         filterChain.doFilter(request, response);
     }
-     private String parseJwt(HttpServletRequest request) {
+
+    private String parseJwt(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
 
         if (header != null && header.startsWith("Bearer ")) {
@@ -82,4 +84,3 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         return null;
     }
 }
-      
