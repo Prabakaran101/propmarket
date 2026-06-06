@@ -19,7 +19,7 @@ spec:
       containers:
         - name: frontend
           # image: prabakaran101/propmarket-frontend:v1
-         image: prabakaran101/realestate-frontend:latest
+          image: prabakaran101/realestate-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80
