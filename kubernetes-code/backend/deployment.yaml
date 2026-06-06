@@ -69,8 +69,8 @@ spec:
 
       containers:
         - name: backend
-          image: prabakaran101/realestate-backend:v3
-#          image: prabakaran101/realestate-backend:latest
+          # image: prabakaran101/realestate-backend:v3
+         image: prabakaran101/realestate-backend:latest
           imagePullPolicy: Always
 
           ports:
