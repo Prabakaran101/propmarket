@@ -4,9 +4,9 @@ metadata:
   name: rds-config
   namespace: propmarket
 data:
-  DB_HOST: "propmarket-db.ch8ck0kssfib.us-west-2.rds.amazonaws.com"
+  DB_HOST: "realestate.ch8ck0kssfib.us-west-2.rds.amazonaws.com"
 #  DB_HOST: "RDS_ENDPOINT_PLACEHOLDER"
   DB_PORT: "5432"
   DB_NAME: "realestate"
-  DB_URL: "jdbc:postgresql://propmarket-db.ch8ck0kssfib.us-west-2.rds.amazonaws.com:5432/realestate?ssl=true&sslmode=verify-full&sslrootcert=/app/certs/global-bundle.pem"
+  DB_URL: "jdbc:postgresql://realestate.ch8ck0kssfib.us-west-2.rds.amazonaws.com:5432/realestate?ssl=true&sslmode=verify-full&sslrootcert=/app/certs/global-bundle.pem"
 #  DB_URL: "jdbc:postgresql://RDS_ENDPOINT_PLACEHOLDER:5432/realestate?ssl=true&sslmode=verify-full&sslrootcert=/app/certs/global-bundle.pem"
