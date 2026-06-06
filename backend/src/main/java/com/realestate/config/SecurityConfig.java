@@ -5,7 +5,8 @@ import com.realestate.security.JwtAuthFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
-import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
+//import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
+import org.springframework.boot.actuate.endpoint.web.EndpointRequest;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -40,7 +41,7 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthFilter jwtAuthFilter;
 
-    @Value("${cors.allowed.origins:http://localhost:3001}")
+    @Value("${cors.allowed.origins:http://localhost:3000}")
     private String allowedOrigins;
 
     @Bean
@@ -73,3 +74,84 @@ public class SecurityConfig {
                     SessionCreationPolicy.STATELESS
                 )
             )
+
+            .authorizeHttpRequests(auth -> auth
+                // ===== ACTUATOR =====
+                .requestMatchers(
+                    EndpointRequest.toAnyEndpoint()
+                ).permitAll()
+
+                // ===== AUTH =====
+                .requestMatchers("/api/auth/**")
+                .permitAll()
+
+                // ===== PUBLIC GET APIs =====
+                .requestMatchers(
+                    HttpMethod.GET,
+                    "/api/listings/**"
+                ).permitAll()
+
+                // ===== UPLOADS =====
+                .requestMatchers("/uploads/**")
+                .permitAll()
+
+                // ===== EVERYTHING ELSE =====
+                .anyRequest()
+                .authenticated()
+            )
+
+            .addFilterBefore(
+                jwtAuthFilter,
+                UsernamePasswordAuthenticationFilter.class
+            );
+
+        return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+
+        CorsConfiguration configuration =
+                new CorsConfiguration();
+
+        List<String> origins =
+                Arrays.asList(allowedOrigins.split(","));
+
+        configuration.setAllowedOrigins(origins);
+
+        configuration.setAllowedMethods(
+                Arrays.asList(
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "OPTIONS",
+                        "PATCH"
+                )
+        );
+
+        configuration.setAllowedHeaders(
+                Arrays.asList("*")
+        );
+
+        configuration.setExposedHeaders(
+                Arrays.asList("Authorization")
+        );
+
+        configuration.setAllowCredentials(true);
+
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration(
+                "/**",
+                configuration
+             );
+
+        return source;
+    }
+}
+        
+
