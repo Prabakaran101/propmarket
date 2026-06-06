@@ -41,9 +41,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration config
-    ) throws Exception {
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 
@@ -54,28 +52,30 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session ->
-                    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
 
-                    // ACTUATOR
-                    .requestMatchers(EndpointRequest.toAnyEndpoint()).permitAll()
+                // ACTUATOR
+                .requestMatchers(EndpointRequest.toAnyEndpoint()).permitAll()
 
-                    // AUTH
-                    .requestMatchers("/api/auth/**").permitAll()
+                // AUTH APIs
+                .requestMatchers("/api/auth/**").permitAll()
 
-                    // PUBLIC APIs
-                    .requestMatchers(HttpMethod.GET, "/api/listings/**").permitAll()
-                    .requestMatchers("/api/public/**").permitAll()
+                // PUBLIC APIs
+                .requestMatchers("/api/listings/**").permitAll()
+                .requestMatchers("/api/public/**").permitAll()
 
-                    // IMPORTANT FIX (prevents your 403 on /api)
-                    .requestMatchers("/api/**").permitAll()
+                // UPLOADS
+                .requestMatchers("/uploads/**").permitAll()
 
-                    // UPLOADS
-                    .requestMatchers("/uploads/**").permitAll()
+                // EVERYTHING ELSE UNDER /api IS PROTECTED
+                .requestMatchers("/api/**").authenticated()
 
-                    // EVERYTHING ELSE
-                    .anyRequest().authenticated()
+                // ROOT
+                .requestMatchers("/").permitAll()
+
+                .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
